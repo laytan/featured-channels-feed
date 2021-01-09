@@ -33,6 +33,7 @@ func Function(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// TODO: channels with multiple bars like EdSheeran don't work currently
 	channels, err := getFeaturedChannels(channelName)
 	if err != nil {
 		fmt.Fprint(w, err)
