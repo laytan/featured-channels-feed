@@ -19,6 +19,7 @@ import (
 )
 
 var (
+	errQuotaReached    = fmt.Errorf("Unfortunately the application has reached the maximum amount of API requests allowed by Youtube, come back tomorrow")
 	errServer          = fmt.Errorf("Server error")
 	errChannelNotGiven = fmt.Errorf("Channel not given in url as ?channel={channel}")
 	errChannelNotFound = func(channel string) error {
@@ -30,6 +31,7 @@ var (
 	errCantUnmarshal = func(err error) error {
 		return fmt.Errorf("Error parsing Youtube data: %v", err)
 	}
+	errNoPromotedChannels = fmt.Errorf("This channel does not have any featured channels")
 )
 
 type result struct {
@@ -40,6 +42,8 @@ type result struct {
 // Function starts the program to return the latest videos from the featured channels of the given channel
 func Function(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
+	// TODO: Dynamic
+	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
 
 	if err := godotenv.Load(); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -62,6 +66,12 @@ func Function(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if len(channels) == 0 {
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(result{Error: errNoPromotedChannels.Error()})
+		return
+	}
+
 	ytClient, err := getYTClient()
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -69,6 +79,7 @@ func Function(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var searchErr error
 	videos := make([]*youtube.SearchResultSnippet, 0)
 	resChan := make(chan *youtube.SearchResultSnippet)
 	doneChan := make(chan bool)
@@ -78,7 +89,11 @@ func Function(w http.ResponseWriter, r *http.Request) {
 			call.ChannelId(chann.ID)
 			res, err := call.Do()
 			if err != nil {
-				fmt.Println(err)
+				searchErr = err
+				if strings.Contains(err.Error(), "quota") {
+					searchErr = errQuotaReached
+				}
+				doneChan <- true
 				return
 			}
 			for _, res := range res.Items {
@@ -100,6 +115,16 @@ Outer:
 				break Outer
 			}
 		}
+	}
+
+	if searchErr != nil {
+		if searchErr.Error() == errQuotaReached.Error() {
+			w.WriteHeader(http.StatusServiceUnavailable)
+		} else {
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+		json.NewEncoder(w).Encode(result{Error: searchErr.Error()})
+		return
 	}
 
 	json.NewEncoder(w).Encode(result{Result: videos})
@@ -149,7 +174,7 @@ func getFeaturedChannels(channelName string) ([]channel, int, error) {
 		channels = extractChannels(rawYT)
 	})
 
-	c.Visit(fmt.Sprintf("https://youtube.com/c/%s/channels", channelName))
+	c.Visit(fmt.Sprintf("https://youtube.com/user/%s/channels", channelName))
 	c.Wait()
 	return channels, statusCode, err
 }
