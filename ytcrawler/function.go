@@ -3,16 +3,23 @@ package ytcrawler
 // TODO: Rename package because we crawl and use the api
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 
 	"github.com/gocolly/colly/v2"
+	"github.com/joho/godotenv"
+	"google.golang.org/api/option"
+	"google.golang.org/api/youtube/v3"
 )
 
 var (
+	errServer          = fmt.Errorf("Server error")
 	errChannelNotGiven = fmt.Errorf("Channel not given in url as ?channel={channel}")
 	errChannelNotFound = func(channel string) error {
 		return fmt.Errorf("Channel: \"%s\" Not Found", channel)
@@ -25,31 +32,83 @@ var (
 	}
 )
 
+type result struct {
+	Error  string                         `json:"error"`
+	Result []*youtube.SearchResultSnippet `json:"result"`
+}
+
 // Function starts the program to return the latest videos from the featured channels of the given channel
 func Function(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	if err := godotenv.Load(); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(result{Error: errServer.Error()})
+		return
+	}
+
 	channelName, err := extractChannelName(r.URL)
 	if err != nil {
-		fmt.Fprint(w, err)
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(result{Error: err.Error()})
 		return
 	}
 
 	// TODO: channels with multiple bars like EdSheeran don't work currently
-	channels, err := getFeaturedChannels(channelName)
+	channels, statusCode, err := getFeaturedChannels(channelName)
 	if err != nil {
-		fmt.Fprint(w, err)
+		w.WriteHeader(statusCode)
+		json.NewEncoder(w).Encode(result{Error: err.Error()})
 		return
 	}
 
-	// TODO: ask yt api for latest videos of these channels
-	// TODO: return the videos and errors in JSON
+	ytClient, err := getYTClient()
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(result{Error: err.Error()})
+		return
+	}
 
-	fmt.Fprint(w, channels)
+	videos := make([]*youtube.SearchResultSnippet, 0)
+	resChan := make(chan *youtube.SearchResultSnippet)
+	doneChan := make(chan bool)
+	for _, chann := range channels {
+		go func(chann channel) {
+			call := ytClient.Search.List([]string{"snippet"})
+			call.ChannelId(chann.ID)
+			res, err := call.Do()
+			if err != nil {
+				fmt.Println(err)
+				return
+			}
+			for _, res := range res.Items {
+				resChan <- res.Snippet
+			}
+			doneChan <- true
+		}(chann)
+	}
+
+	done := 0
+Outer:
+	for {
+		select {
+		case res := <-resChan:
+			videos = append(videos, res)
+		case <-doneChan:
+			done++
+			if done == len(channels) {
+				break Outer
+			}
+		}
+	}
+
+	json.NewEncoder(w).Encode(result{Result: videos})
 }
 
 // extractChannelName parses the url for the first parameter as the name
 func extractChannelName(URL *url.URL) (string, error) {
 	for key, value := range URL.Query() {
-		if key == "channel" {
+		if key == "channel" && value[0] != "" {
 			return value[0], nil
 		}
 	}
@@ -60,20 +119,23 @@ func extractChannelName(URL *url.URL) (string, error) {
 // getFeaturedChannels scrapes the youtube channel for its featured channels
 // Note: Tried doing it with the yt API
 // but there is currently a bug which makes the featured channels not be returned through the api
-func getFeaturedChannels(channelName string) ([]channel, error) {
+func getFeaturedChannels(channelName string) ([]channel, int, error) {
 	channels := make([]channel, 0)
 	var err error
+	statusCode := http.StatusOK
 
 	c := colly.NewCollector()
 
 	// Check for error-page id which probably means the channel does not exist
 	c.OnHTML("#error-page", func(e *colly.HTMLElement) {
 		err = errChannelNotFound(channelName)
+		statusCode = http.StatusNotFound
 	})
 
 	// Colly errors
 	c.OnError(func(_ *colly.Response, e error) {
 		err = errCollyErr(e)
+		statusCode = http.StatusInternalServerError
 	})
 
 	// Get featured channels
@@ -81,6 +143,7 @@ func getFeaturedChannels(channelName string) ([]channel, error) {
 		rawYT, er := getRawYT(e)
 		if er != nil {
 			err = er
+			statusCode = http.StatusInternalServerError
 		}
 
 		channels = extractChannels(rawYT)
@@ -88,7 +151,7 @@ func getFeaturedChannels(channelName string) ([]channel, error) {
 
 	c.Visit(fmt.Sprintf("https://youtube.com/c/%s/channels", channelName))
 	c.Wait()
-	return channels, err
+	return channels, statusCode, err
 }
 
 type ytdata struct {
@@ -155,4 +218,22 @@ func extractChannels(data *ytdata) []channel {
 		}
 	}
 	return channels
+}
+
+// getYTClient sets up the youtube library
+func getYTClient() (*youtube.Service, error) {
+	apiKey := os.Getenv("YOUTUBE_API_KEY")
+	if apiKey == "" {
+		log.Println("No YOUTUBE_API_KEY in env")
+		return &youtube.Service{}, errServer
+	}
+
+	ctx := context.Background()
+	youtubeService, err := youtube.NewService(ctx, option.WithAPIKey(apiKey))
+	if err != nil {
+		log.Printf("Error getting youtube service: %v\n", err)
+		return &youtube.Service{}, errServer
+	}
+
+	return youtubeService, nil
 }
