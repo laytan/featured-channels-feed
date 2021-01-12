@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/gocolly/colly/v2"
 	"github.com/joho/godotenv"
@@ -35,8 +36,18 @@ var (
 )
 
 type result struct {
-	Error  string                         `json:"error"`
-	Result []*youtube.SearchResultSnippet `json:"result"`
+	Error  string   `json:"error"`
+	Result []*video `json:"result"`
+}
+
+type video struct {
+	ID           string `json:"id"`
+	ChannelTitle string `json:"channelTitle"`
+	ChannelID    string `json:"channelId"`
+	PublishedAt  string `json:"publishedAt"`
+	Thumbnail    string `json:"thumbnail"`
+	Description  string `json:"description"`
+	Title        string `json:"title"`
 }
 
 // Function starts the program to return the latest videos from the featured channels of the given channel
@@ -80,13 +91,15 @@ func Function(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var searchErr error
-	videos := make([]*youtube.SearchResultSnippet, 0)
-	resChan := make(chan *youtube.SearchResultSnippet)
+	videos := make([]*video, 0)
+	resChan := make(chan *video)
 	doneChan := make(chan bool)
 	for _, chann := range channels {
 		go func(chann channel) {
-			call := ytClient.Search.List([]string{"snippet"})
-			call.ChannelId(chann.ID)
+			// Get every video from the channel in the past 2 weeks (max 50)
+			weekAgo := time.Now().Add(-(time.Hour * 24 * 14)).Format(time.RFC3339)
+			call := ytClient.Search.List([]string{"snippet"}).ChannelId(chann.ID).Order("date").Type("video").MaxResults(50).PublishedAfter(weekAgo)
+
 			res, err := call.Do()
 			if err != nil {
 				searchErr = err
@@ -97,7 +110,15 @@ func Function(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			for _, res := range res.Items {
-				resChan <- res.Snippet
+				resChan <- &video{
+					ID:           res.Id.VideoId,
+					ChannelTitle: res.Snippet.ChannelTitle,
+					ChannelID:    res.Snippet.ChannelId,
+					PublishedAt:  res.Snippet.PublishedAt,
+					Thumbnail:    res.Snippet.Thumbnails.Medium.Url,
+					Description:  res.Snippet.Description,
+					Title:        res.Snippet.Title,
+				}
 			}
 			doneChan <- true
 		}(chann)
