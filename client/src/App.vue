@@ -1,15 +1,15 @@
 <template>
-  <div class="container mx-auto mt-5 md:mt-16 px-2">
+  <div class="container px-2 mx-auto mt-5 md:mt-16">
     <div
       v-if="error.length"
       class="fixed top-0 left-0 right-0 m-4 md:left-auto md:m-8"
     >
-      <div class="bg-red-200 text-red-900 rounded-lg shadow-md p-6 pr-10">
+      <div class="p-6 pr-10 text-red-900 bg-red-200 rounded-lg shadow-md">
         {{ error }}
       </div>
       <button
         @click="error = ''"
-        class="opacity-75 cursor-pointer absolute top-0 right-0 py-2 px-3 hover:opacity-100"
+        class="absolute top-0 right-0 px-3 py-2 opacity-75 cursor-pointer hover:opacity-100"
       >
         x
       </button>
@@ -25,96 +25,130 @@
       </p>
     </div>
     <form @submit.prevent="onSearch">
-      <div class="bg-gray-200 shadow-lg p-4 flex flex-wrap md:flex-nowrap">
+      <div class="flex flex-wrap p-4 bg-gray-200 shadow-lg md:flex-nowrap">
         <label
           for="channel-search"
-          class="text-3xl text-gray-700 mr-4 font-semibold"
+          class="mr-4 text-3xl font-semibold text-gray-700"
           >Channel</label
         >
         <div class="flex w-full">
           <input
             id="channel-search"
             v-model="channel"
-            class="w-full rounded p-2 flex-grow-1 border-2 border-blue-200"
+            class="w-full p-2 border-2 border-blue-200 rounded flex-grow-1"
             type="text"
             placeholder="Try 'LinusTechTips'"
           />
           <button
-            class="bg-blue-400 hover:bg-blue-300 rounded text-white p-2 pl-4 pr-4"
+            class="p-2 pl-4 pr-4 text-white bg-blue-400 rounded hover:bg-blue-300"
           >
             <p class="font-semibold">Go</p>
           </button>
         </div>
       </div>
     </form>
-    <a
-      href="https://www.youtube.com/watch?v=CDAsYgAXeb0"
-      class="grid grid-rows-1 md:grid-cols-3 mx-auto mt-5 hover:underline"
-      style="max-width: 1000px"
-    >
-      <div class="relative w-full">
-        <img
-          class="w-full"
-          src="https://i.ytimg.com/vi/CDAsYgAXeb0/hqdefault.jpg?sqp=-oaymwEZCPYBEIoBSFXyq4qpAwsIARUAAIhCGAFwAQ==&rs=AOn4CLAYVFUjIravcWsr8t6t-fsDs2Em7Q"
-          alt="Thumbnail"
-        />
-        <span
-          class="absolute bottom-0 right-0 mr-2 mb-1 p-1 bg-black text-gray-100"
-          >4:03</span
-        >
-      </div>
-      <div class="md:col-span-2 text-gray-700 bg-gray-200 p-3">
-        <h2 class="text-2xl font-semibold">
-          Lijpe - Mansory ft. Frenna (prod. Trobi & Vanno)
-        </h2>
-        <h3 class="mb-2">TopNotch - 429k weergaven - 3 dagen geleden</h3>
-        <p>
-          Stream of download 'Mansory': http://Lijpe.lnk.to/Mansory Offficial
-          Music Video Lijpe - Mansory ft. Frenna (prod. Trobi & Vanno) Video
-          Credits: Director: Caio Silva Producent: Rabia Abdoella...
-        </p>
-      </div>
-    </a>
+    <div class="mt-2" v-if="result">
+      <p class="ml-4 text-sm">
+        {{ result.length }} Video{{ result.length > 1 ? "s" : "" }} published by
+        featured channels of {{ currChan }} in the last 2 weeks found.
+      </p>
+      <a
+        v-for="video in result"
+        :key="video.title"
+        :href="`https://www.youtube.com/watch?v=${video.id}`"
+        target="_BLANK"
+        rel="noopener noreferrer nofollow"
+        class="grid grid-rows-1 mx-auto mt-5 md:grid-cols-3 hover:underline"
+        style="max-width: 1000px"
+      >
+        <div class="w-full">
+          <img
+            class="object-contain w-full"
+            :src="video.thumbnail"
+            alt="Thumbnail"
+          />
+        </div>
+        <div class="p-3 text-gray-700 bg-gray-200 md:col-span-2">
+          <h2
+            class="text-2xl font-semibold break-all"
+            v-html="sanitize(video.title)"
+          ></h2>
+          <h3 class="mb-2">
+            <span v-html="sanitize(video.channelTitle)"></span> -
+            {{ formatDistanceToNow(video.publishedAt) }} ago
+          </h3>
+          <p class="break-all" v-html="sanitize(video.description)"></p>
+        </div>
+      </a>
+    </div>
   </div>
 </template>
 
 <script lang="ts">
 import { defineComponent, ref } from "vue";
+import { formatDistanceToNow, compareDesc } from "date-fns";
+import DOMPurify from "dompurify";
+import Video from "./models/Video";
 
 export default defineComponent({
   name: "App",
   setup() {
-    const channel = ref("");
     const error = ref("");
+
+    // Modelled to input
+    const channel = ref("");
+
+    // Channel we are showing results of
+    const currChan = ref("");
+    const result = ref<Array<Video> | null>(null);
+
     const onSearch = async () => {
       try {
         error.value = "";
-
         const res = await fetch(
-          `http://localhost:8080?channel=${channel.value}`
+          `${import.meta.env.VITE_FUNCTION_URL ?? ""}?channel=${channel.value}`
         );
+        const data = await res.json();
 
         // Only handle responses in the 200 range
         if (!res.ok) {
-          throw await res.json();
+          error.value =
+            data.error ?? "Error retrieving videos, please try again";
+          return;
         }
 
-        const data = await res.json();
-        console.log(data);
+        result.value = data.result
+          ?.map(
+            (res: any) =>
+              new Video(
+                res.id ?? "",
+                res.channelId ?? "",
+                res.channelTitle ?? "",
+                res.description ?? "",
+                res.publishedAt ?? "",
+                res.thumbnail ?? "",
+                res.title ?? ""
+              )
+          )
+          .sort((a: Video, b: Video) =>
+            compareDesc(a.publishedAt, b.publishedAt)
+          );
+        currChan.value = channel.value;
       } catch (e) {
-        if (e.error?.length) {
-          error.value = e.error;
-        } else if (e.length) {
-          error.value = e;
-        } else if (e.error?.message?.length) {
-          error.value = e.error.message;
-        } else {
-          error.value = e.toString();
-        }
+        console.error(e);
+        error.value = "Error retrieving videos, please try again";
       }
     };
 
-    return { onSearch, channel, error };
+    return {
+      onSearch,
+      channel,
+      error,
+      result,
+      formatDistanceToNow,
+      sanitize: DOMPurify.sanitize,
+      currChan,
+    };
   },
 });
 </script>

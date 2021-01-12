@@ -3,13 +3,16 @@
   "version": "0.0.0",
   "scripts": {
     "dev": "vite",
-    "build": "vuedx-typecheck . && vite build"
+    "build": "vite build"
   },
   "dependencies": {
+    "date-fns": "^2.16.1",
+    "dompurify": "^2.2.6",
     "vue": "^3.0.5"
   },
   "devDependencies": {
     "@tailwindcss/postcss7-compat": "^2.0.2",
+    "@types/dompurify": "^2.2.1",
     "@vitejs/plugin-vue": "^1.0.4",
     "@vue/compiler-sfc": "^3.0.5",
     "@vuedx/typecheck": "^0.4.1",
