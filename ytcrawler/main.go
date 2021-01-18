@@ -51,6 +51,7 @@ func main() {
 // Function starts the program to return the latest videos from the featured channels of the given channel
 func Function(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprintf("public, max-age=%d", 60*30))
 	w.Header().Set("Access-Control-Allow-Origin", os.Getenv("FRONTEND_URL"))
 
 	channelName, err := extractChannelName(r.URL)
