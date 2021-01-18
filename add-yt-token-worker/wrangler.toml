@@ -1,7 +1,0 @@
-name = "add-yt-token-worker"
-type = "webpack"
-account_id = "de5e5e431127abc90bcbb8cc48bf0f1c"
-workers_dev = true
-route = ""
-zone_id = ""
-webpack_config = "webpack.config.js"
