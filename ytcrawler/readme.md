@@ -1,5 +1,9 @@
 # ytcrawler
 
+The server for featured-channels-feed.
+
+Built with Golang and uses Docker for deployment.
+
 ## Dev
 
 Make sure Docker and Docker Compose are installed on your system.
