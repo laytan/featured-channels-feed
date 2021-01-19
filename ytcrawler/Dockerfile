@@ -17,9 +17,6 @@ COPY . .
 # Download dependencies
 RUN go mod download
 
-# Build the application
-RUN go build -o main .
-
 # Install Chromium and it's dependencies
 RUN echo "http://dl-cdn.alpinelinux.org/alpine/edge/main" > /etc/apk/repositories \
     && echo "http://dl-cdn.alpinelinux.org/alpine/edge/community" >> /etc/apk/repositories \
@@ -42,5 +39,9 @@ RUN echo "http://dl-cdn.alpinelinux.org/alpine/edge/main" > /etc/apk/repositorie
 ENV CHROME_BIN=/usr/bin/chromium-browser \
     CHROME_PATH=/usr/lib/chromium/
 
+# Build the application
+WORKDIR /app/cmd/ytcrawler
+RUN go build
+
 # Start the app
-CMD ["/app/main"]
+CMD ["./ytcrawler"]

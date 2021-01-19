@@ -1,0 +1,12 @@
+version: "3"
+services:
+  featured-channels-crawler-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+      args:
+        FRONTEND_URL: http://localhost:3000
+    ports:
+      - '8080:8080'
+    volumes:
+      - ./:/app
