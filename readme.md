@@ -6,11 +6,11 @@ Try it out on [s.laytanlaats.com/channels](https://featured-channels-feed.laytan
 
 ## Screenshots
 
-![Screenshot]("https://github.com/laytan/featured-channels-feed/raw/main/assets/screen1.png")
+![Home](https://github.com/laytan/featured-channels-feed/raw/main/assets/screen1.png)
 
-![Screenshot 2]("https://github.com/laytan/featured-channels-feed/raw/main/assets/screen2.png")
+![Screenshot 2](https://github.com/laytan/featured-channels-feed/raw/main/assets/screen2.png)
 
-![Screenshot 3]("https://github.com/laytan/featured-channels-feed/raw/main/assets/screen3.png")
+![Screenshot 3](https://github.com/laytan/featured-channels-feed/raw/main/assets/screen3.png)
 
 ## Goals
 
