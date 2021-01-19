@@ -46,6 +46,7 @@ type channel struct {
 // CrawlChannel starts the program to return the latest videos from the featured channels of the given channel
 func CrawlChannel(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
+	// Cache responses for 30 minutes
 	w.Header().Set("Cache-Control", fmt.Sprintf("public, max-age=%d", 60*30))
 	w.Header().Set("Access-Control-Allow-Origin", os.Getenv("FRONTEND_URL"))
 
@@ -95,7 +96,7 @@ func getFeaturedChannels(channelName string) ([]*channel, int, error) {
 	geziyor.NewGeziyor(&geziyor.Options{
 		Timeout: time.Second * 5,
 		StartRequestsFunc: func(g *geziyor.Geziyor) {
-			g.GetRendered(fmt.Sprintf("https://youtube.com/user/%s/channels", channelName), g.Opt.ParseFunc)
+			g.GetRendered(fmt.Sprintf("https://youtube.com/c/%s/channels", channelName), g.Opt.ParseFunc)
 		},
 		ParseFunc: onChannelsPage(&channels),
 		ErrorFunc: func(_ *geziyor.Geziyor, _ *client.Request, errr error) {
