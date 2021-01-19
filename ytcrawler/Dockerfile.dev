@@ -43,5 +43,4 @@ ENV CHROME_BIN=/usr/bin/chromium-browser \
 RUN go get github.com/githubnemo/CompileDaemon
 
 # Run the Daemon
-WORKDIR /app/cmd/ytcrawler
-ENTRYPOINT CompileDaemon --build="go build" --command=./ytcrawler
+ENTRYPOINT CompileDaemon --directory="/app" --build="go build -o cmd/ytcrawler/ytcrawler cmd/ytcrawler/main.go" --command="/app/cmd/ytcrawler/ytcrawler"
