@@ -1,5 +1,6 @@
 <template>
   <div class="container px-2 mx-auto mt-5 md:mt-16">
+    <Modal v-if="loading && showModal" :onClose="onCloseModal"></Modal>
     <div
       v-if="error.length"
       class="fixed top-0 left-0 right-0 m-4 md:left-auto md:m-8"
@@ -14,7 +15,6 @@
         x
       </button>
     </div>
-
     <div class="pl-4 mb-5">
       <h1 class="text-3xl font-semibold text-gray-700">
         Featured Channel Feed
@@ -71,42 +71,7 @@
         </div>
       </div>
     </form>
-    <div class="mt-2" v-if="videos.length">
-      <p class="ml-4 text-sm">
-        Showing {{ videos.length }} video{{
-          videos.length > 1 ? "s" : ""
-        }}
-        published by featured channels of {{ currChan }} (the 8 latest videos
-        per channel).
-      </p>
-      <a
-        v-for="video in videos"
-        :key="video.title"
-        :href="`https://www.youtube.com${video.url}`"
-        target="_BLANK"
-        rel="noopener noreferrer nofollow"
-        class="grid grid-rows-1 mx-auto mt-5 md:grid-cols-3 hover:underline"
-        style="max-width: 1000px"
-      >
-        <div class="w-full">
-          <img
-            class="object-contain w-full"
-            :src="video.thumbnailUrl"
-            alt="Thumbnail"
-            loading="lazy"
-          />
-        </div>
-        <div class="p-3 text-gray-700 bg-gray-200 md:col-span-2">
-          <h2 class="text-2xl font-semibold break-all">
-            {{ video.title }}
-          </h2>
-          <h3 class="mb-2">
-            {{ video.channelTitle }} - {{ video.publishedAt }} -
-            {{ video.views }}
-          </h3>
-        </div>
-      </a>
-    </div>
+    <Videos class="mt-2" v-if="videos.length" :videos="videos"></Videos>
   </div>
 </template>
 
@@ -114,12 +79,23 @@
 import { defineComponent, ref, computed, HTMLAttributes } from "vue";
 import Channel from "./models/Channel";
 import Video from "./models/Video";
+import Modal from "./components/Modal.vue";
+import Videos from "./components/Videos.vue";
 
 export default defineComponent({
   name: "App",
+  components: {
+    Modal,
+    Videos,
+  },
   setup() {
     const error = ref("");
+
     const loading = ref(false);
+    const showModal = ref(true);
+    const onCloseModal = () => {
+      showModal.value = false;
+    };
 
     // Modelled to input
     const channel = ref("");
@@ -181,6 +157,7 @@ export default defineComponent({
         error.value = "Error retrieving videos, please try again";
       } finally {
         loading.value = false;
+        showModal.value = true;
       }
     };
 
@@ -191,6 +168,8 @@ export default defineComponent({
       videos,
       currChan,
       loading,
+      showModal,
+      onCloseModal,
     };
   },
 });
