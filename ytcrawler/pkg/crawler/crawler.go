@@ -98,7 +98,7 @@ func getFeaturedChannels(channelName string) ([]*channel, int, error) {
 		StartRequestsFunc: func(g *geziyor.Geziyor) {
 			g.GetRendered(fmt.Sprintf("https://youtube.com/c/%s/channels", channelName), g.Opt.ParseFunc)
 		},
-		ParseFunc: onChannelsPage(&channels),
+		ParseFunc: onChannelsPage(channelName, &channels),
 		ErrorFunc: func(_ *geziyor.Geziyor, _ *client.Request, errr error) {
 			fmt.Println(errr)
 			err = errr
@@ -111,12 +111,16 @@ func getFeaturedChannels(channelName string) ([]*channel, int, error) {
 }
 
 // Ran on youtube.com/user/example/channels and runs onChannel for each featured channel on the page
-func onChannelsPage(channels *[]*channel) func(*geziyor.Geziyor, *client.Response) {
+func onChannelsPage(hostChannel string, channels *[]*channel) func(*geziyor.Geziyor, *client.Response) {
 	return func(g *geziyor.Geziyor, r *client.Response) {
 		if r.HTMLDoc == nil {
 			return
 		}
 
+		// Get videos from entered channel
+		g.GetRendered(fmt.Sprintf("https://www.youtube.com/c/%s/videos", hostChannel), onChannel(channels))
+
+		// Get videos from featured channels
 		r.HTMLDoc.Find("a.ytd-grid-channel-renderer").Each(func(_ int, s *goquery.Selection) {
 			url, exists := s.Attr("href")
 			if !exists {
