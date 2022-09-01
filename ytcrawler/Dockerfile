@@ -1,5 +1,5 @@
 # Start with a base of golang on alpine linux
-FROM golang:1.15.6-alpine3.12
+FROM golang:1.19-alpine3.16
 
 # Allow specifying the frontend url
 ARG FRONTEND_URL
@@ -21,7 +21,8 @@ RUN go mod download
 RUN echo "http://dl-cdn.alpinelinux.org/alpine/edge/main" > /etc/apk/repositories \
     && echo "http://dl-cdn.alpinelinux.org/alpine/edge/community" >> /etc/apk/repositories \
     && echo "http://dl-cdn.alpinelinux.org/alpine/edge/testing" >> /etc/apk/repositories \
-    && echo "http://dl-cdn.alpinelinux.org/alpine/v3.12/main" >> /etc/apk/repositories \
+    && echo "http://dl-cdn.alpinelinux.org/alpine/v3.16/main" >> /etc/apk/repositories \
+    && apk update \
     && apk upgrade -U -a \
     && apk add \
     libstdc++ \

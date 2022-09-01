@@ -13,6 +13,7 @@ import (
 	"github.com/PuerkitoBio/goquery"
 	"github.com/geziyor/geziyor"
 	"github.com/geziyor/geziyor/client"
+	"github.com/geziyor/geziyor/middleware"
 )
 
 var (
@@ -41,6 +42,17 @@ type channel struct {
 	URLTitle        string  `json:"urlTitle"`
 	DisplayTitle    string  `json:"displayTitle"`
 	LatestVideos    []video `json:"latestVideos"`
+}
+
+type setCookiesMiddleware struct {
+	cookies []*http.Cookie
+}
+
+func (m *setCookiesMiddleware) ProcessRequest(r *client.Request) {
+	fmt.Printf("Setting %d cookies\n", len(m.cookies))
+	for _, cookie := range m.cookies {
+		r.AddCookie(cookie)
+	}
 }
 
 // CrawlChannel starts the program to return the latest videos from the featured channels of the given channel
@@ -93,32 +105,92 @@ func getFeaturedChannels(channelName string) ([]*channel, int, error) {
 	var err error
 	statusCode := http.StatusOK
 
+	cookieMiddleware := &setCookiesMiddleware{}
+
 	geziyor.NewGeziyor(&geziyor.Options{
 		Timeout: time.Second * 5,
 		StartRequestsFunc: func(g *geziyor.Geziyor) {
-			g.GetRendered(fmt.Sprintf("https://youtube.com/c/%s/channels", channelName), g.Opt.ParseFunc)
+			g.GetRendered(
+				fmt.Sprintf("https://www.youtube.com/%s/channels", channelName),
+				g.Opt.ParseFunc,
+			)
 		},
-		ParseFunc: onChannelsPage(channelName, &channels),
+		ParseFunc: onChannelsPage(channelName, &channels, cookieMiddleware),
 		ErrorFunc: func(_ *geziyor.Geziyor, _ *client.Request, errr error) {
 			fmt.Println(errr)
 			err = errr
 			statusCode = http.StatusInternalServerError
 		},
+		RequestMiddlewares: []middleware.RequestProcessor{cookieMiddleware},
+		URLRevisitEnabled:  true,
 	}).Start()
 
-	fmt.Printf("GetFeaturedChannels took: %s for %d featured channels of %s\n", time.Since(start), len(channels), channelName)
+	fmt.Printf(
+		"GetFeaturedChannels took: %s for %d featured channels of %s\n",
+		time.Since(start),
+		len(channels),
+		channelName,
+	)
 	return channels, statusCode, err
 }
 
 // Ran on youtube.com/user/example/channels and runs onChannel for each featured channel on the page
-func onChannelsPage(hostChannel string, channels *[]*channel) func(*geziyor.Geziyor, *client.Response) {
+func onChannelsPage(
+	hostChannel string,
+	channels *[]*channel,
+	cookieMiddleware *setCookiesMiddleware,
+) func(*geziyor.Geziyor, *client.Response) {
+	consentSeen := false
 	return func(g *geziyor.Geziyor, r *client.Response) {
 		if r.HTMLDoc == nil {
 			return
 		}
 
+		if r.Request.URL.Host == "consent.youtube.com" {
+			fmt.Println("Accepting consent")
+			if consentSeen {
+				fmt.Println("[ERROR] Have seen consent already, but still redirected to consent.")
+				return
+			}
+
+			request := url.Values{}
+
+			r.HTMLDoc.Find(".saveButtonContainer").
+				Children().
+				Last().
+				Find("input[type=\"hidden\"]").
+				Each(func(i int, s *goquery.Selection) {
+					if name, ok := s.Attr("name"); ok {
+						if value, ok := s.Attr("value"); ok {
+							request.Set(name, value)
+						}
+					}
+				})
+
+			res, err := http.PostForm("https://consent.youtube.com/save", request)
+			if err != nil {
+				fmt.Errorf("[ERROR] accepting consent/cookies: %w\n", err)
+			}
+
+			fmt.Printf("Status code %s for consent submission\n", res.Status)
+
+			cookieMiddleware.cookies = res.Cookies()
+
+			// Refire the request.
+			g.GetRendered(
+				fmt.Sprintf("https://www.youtube.com/%s/channels", hostChannel),
+				g.Opt.ParseFunc,
+			)
+
+			consentSeen = true
+			return
+		}
+
 		// Get videos from entered channel
-		g.GetRendered(fmt.Sprintf("https://www.youtube.com/c/%s/videos", hostChannel), onChannel(channels))
+		g.GetRendered(
+			fmt.Sprintf("https://www.youtube.com/%s/videos", hostChannel),
+			onChannel(channels),
+		)
 
 		// Get videos from featured channels
 		r.HTMLDoc.Find("a.ytd-grid-channel-renderer").Each(func(_ int, s *goquery.Selection) {
@@ -128,7 +200,7 @@ func onChannelsPage(hostChannel string, channels *[]*channel) func(*geziyor.Gezi
 				return
 			}
 
-			g.GetRendered(fmt.Sprintf("https://www.youtube.com%s/videos", url), onChannel(channels))
+			g.GetRendered(fmt.Sprintf("https://www.youtube.com%s", url), onChannel(channels))
 		})
 	}
 }
@@ -140,28 +212,36 @@ func onChannel(channels *[]*channel) func(*geziyor.Geziyor, *client.Response) {
 			return
 		}
 
+		fmt.Printf("Parsing %s\n", r.Request.URL.Path)
+
 		channelTitle := r.HTMLDoc.Find("#inner-header-container .ytd-channel-name#text").Text()
 		subscriberText := r.HTMLDoc.Find("#inner-header-container #subscriber-count").Text()
+
 		urlTitle := strings.Replace(r.Request.URL.Path, "/user/", "", 1)
 		urlTitle = strings.Replace(urlTitle, "/channel/", "", 1)
 		urlTitle = strings.Replace(urlTitle, "/videos", "", 1)
 
 		videos := make([]video, 0)
-		r.HTMLDoc.Find("#primary #contents #items .ytd-grid-renderer").Each(func(i int, s *goquery.Selection) {
-			if i > 8 {
-				return
-			}
+		r.HTMLDoc.Find(".ytd-browse #contents #items").First().Children().
+			Each(func(i int, s *goquery.Selection) {
+				if i >= 8 {
+					return
+				}
 
-			videoURL, _ := s.Find("#thumbnail").Attr("href")
-			thumbnailURL, _ := s.Find("#thumbnail img").Attr("src")
-			videos = append(videos, video{
-				URL:          videoURL,
-				ThumbnailURL: thumbnailURL,
-				PublishedAt:  s.Find("#details #metadata-line .ytd-grid-video-renderer:nth-child(2)").Text(),
-				Title:        s.Find("#details #video-title").Text(),
-				Views:        s.Find("#details #metadata-line .ytd-grid-video-renderer:nth-child(1)").Text(),
+				fmt.Printf("Found video: %s\n", s.Find("#details #video-title").Text())
+
+				videoURL, _ := s.Find("#thumbnail").Attr("href")
+				thumbnailURL, _ := s.Find("#thumbnail img").Attr("src")
+				videos = append(videos, video{
+					URL:          videoURL,
+					ThumbnailURL: thumbnailURL,
+					PublishedAt: s.Find("#details #metadata-line .ytd-grid-video-renderer:nth-child(2)").
+						Text(),
+					Title: s.Find("#details #video-title").Text(),
+					Views: s.Find("#details #metadata-line .ytd-grid-video-renderer:nth-child(1)").
+						Text(),
+				})
 			})
-		})
 
 		*channels = append(*channels, &channel{
 			SubscriberCount: subscriberText,
