@@ -89,7 +89,8 @@ export default defineComponent({
     Videos,
   },
   setup() {
-    const error = ref("");
+    const archivedMsg = "The backend for this project has been archived due to a multitude of changes in YouTube which are incompatible with the crawler."
+    const error = ref(archivedMsg);
 
     const loading = ref(false);
     const showModal = ref(true);
@@ -118,43 +119,49 @@ export default defineComponent({
       try {
         loading.value = true;
         error.value = "";
-        const res = await fetch(
-          `${import.meta.env.VITE_FUNCTION_URL ?? ""}?channel=${channel.value}`
-        );
-        const data = await res.json();
 
-        // Only handle responses in the 200 range
-        if (!res.ok) {
-          error.value =
-            data.error ?? "Error retrieving videos, please try again";
-          return;
-        }
-
-        result.value =
-          data.channels?.map(
-            (res: any): Channel =>
-              new Channel(
-                res.subscriberCount ?? "",
-                res.urlTitle ?? "",
-                res.displayTitle ?? "",
-                res.latestVideos?.map(
-                  (video: any): Video =>
-                    new Video(
-                      video.url ?? "",
-                      video.publishedAt ?? "",
-                      video.thumbnail ?? "",
-                      video.title ?? "",
-                      video.views ?? "",
-                      res.displayTitle ?? ""
-                    )
-                ) ?? []
-              )
-          ) ?? [];
-        currChan.value = channel.value;
-        channel.value = "";
+        // const res = await fetch(
+        //   `${import.meta.env.VITE_FUNCTION_URL ?? ""}?channel=${channel.value}`
+        // );
+        // const data = await res.json();
+        //
+        // // Only handle responses in the 200 range
+        // if (!res.ok) {
+        //   error.value =
+        //     data.error ?? "Error retrieving videos, please try again";
+        //   return;
+        // }
+        //
+        // result.value =
+        //   data.channels?.map(
+        //     (res: any): Channel =>
+        //       new Channel(
+        //         res.subscriberCount ?? "",
+        //         res.urlTitle ?? "",
+        //         res.displayTitle ?? "",
+        //         res.latestVideos?.map(
+        //           (video: any): Video =>
+        //             new Video(
+        //               video.url ?? "",
+        //               video.publishedAt ?? "",
+        //               video.thumbnail ?? "",
+        //               video.title ?? "",
+        //               video.views ?? "",
+        //               res.displayTitle ?? ""
+        //             )
+        //         ) ?? []
+        //       )
+        //   ) ?? [];
+        // currChan.value = channel.value;
+        // channel.value = "";
+        
+        await new Promise((_, reject) => {
+          setTimeout(() => { reject(archivedMsg) }, 1000);
+        })
       } catch (e) {
         console.error(e);
-        error.value = "Error retrieving videos, please try again";
+        // error.value = "Error retrieving videos, please try again";
+        error.value = archivedMsg;
       } finally {
         loading.value = false;
         showModal.value = true;
